@@ -15,6 +15,8 @@ class AssistantFnc(llm.FunctionContext):
         super().__init__()
         # 注文データを保持するディクショナリ
         self.orders = {}
+        # 実行された関数を追跡するためのリスト
+        self.executed_functions = []
         
     @llm.ai_callable(
         description="user_idとorder_idを引数に取り、注文のステータスを返します。user_idはともに5桁の数字です。",
@@ -25,6 +27,13 @@ class AssistantFnc(llm.FunctionContext):
         order_id: int
     ):
         """注文のステータスを確認する"""
+
+        # 実行された関数を記録
+        self.executed_functions.append({
+            "function": "check_order_details",
+            "args": {"user_id": user_id, "order_id": order_id},
+            "timestamp": datetime.datetime.now().isoformat()
+        })
 
         # Function Calling実行中の場合、ユーザーに対して時間がかかることを通知するためのオプションがいくつかある
         # オプション1: Function Callingをトリガーした直後に.sayでフィラーメッセージを使用する
@@ -75,6 +84,13 @@ class AssistantFnc(llm.FunctionContext):
         order_id: int
     ):
         """ユーザーの注文をキャンセルする"""
+        
+        # 実行された関数を記録
+        self.executed_functions.append({
+            "function": "cancel_order",
+            "args": {"user_id": user_id, "order_id": order_id},
+            "timestamp": datetime.datetime.now().isoformat()
+        })
         
         # Function Calling実行中の状態通知
         agent = AgentCallContext.get_current().agent
@@ -150,6 +166,13 @@ class AssistantFnc(llm.FunctionContext):
         new_quantity: int
     ):
         """注文内容の商品数量を変更する"""
+        
+        # 実行された関数を記録
+        self.executed_functions.append({
+            "function": "update_order_quantity",
+            "args": {"user_id": user_id, "order_id": order_id, "product_name": product_name, "new_quantity": new_quantity},
+            "timestamp": datetime.datetime.now().isoformat()
+        })
         
         # Function Calling実行中の状態通知
         agent = AgentCallContext.get_current().agent
