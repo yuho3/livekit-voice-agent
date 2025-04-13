@@ -57,10 +57,13 @@ export default function Page() {
           <SimpleVoiceAssistant onConnectButtonClicked={onConnectButtonClicked} />
         </div>
       </RoomContext.Provider>
-      
+
       {/* 管理画面へのリンク */}
       <div className="fixed top-4 right-4">
-        <Link href="/admin" className="bg-white text-gray-800 px-4 py-2 rounded shadow hover:bg-gray-100">
+        <Link
+          href="/admin"
+          className="bg-white text-gray-800 px-4 py-2 rounded shadow hover:bg-gray-100"
+        >
           管理画面
         </Link>
       </div>

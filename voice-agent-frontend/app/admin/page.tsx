@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { format } from "date-fns";
 import { ja } from "date-fns/locale";
 import Link from "next/link";
+import React, { useEffect, useState } from "react";
 import { FiArrowLeft } from "react-icons/fi";
 
 // 会話データの型定義
@@ -147,10 +147,10 @@ export default function AdminPage() {
                               action === "確認"
                                 ? "bg-blue-100 text-blue-800"
                                 : action === "変更"
-                                ? "bg-yellow-100 text-yellow-800"
-                                : action === "キャンセル"
-                                ? "bg-red-100 text-red-800"
-                                : "bg-gray-100 text-gray-800"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : action === "キャンセル"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-gray-100 text-gray-800"
                             }`}
                           >
                             {action}
@@ -182,10 +182,7 @@ export default function AdminPage() {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between mb-6">
               <h2 className="text-xl font-semibold text-gray-800">会話詳細</h2>
-              <button
-                onClick={closeDetail}
-                className="text-gray-600 hover:text-gray-900"
-              >
+              <button onClick={closeDetail} className="text-gray-600 hover:text-gray-900">
                 ← 一覧に戻る
               </button>
             </div>
@@ -195,7 +192,8 @@ export default function AdminPage() {
                 <h3 className="text-lg font-medium text-gray-700 mb-2">基本情報</h3>
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <p className="mb-1">
-                    <span className="font-medium">記録時間:</span> {formatDate(selectedConversation.timestamp)}
+                    <span className="font-medium">記録時間:</span>{" "}
+                    {formatDate(selectedConversation.timestamp)}
                   </p>
                   <p>
                     <span className="font-medium">問い合わせ分類:</span>{" "}
@@ -207,10 +205,10 @@ export default function AdminPage() {
                             action === "確認"
                               ? "bg-blue-100 text-blue-800"
                               : action === "変更"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : action === "キャンセル"
-                              ? "bg-red-100 text-red-800"
-                              : "bg-gray-100 text-gray-800"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : action === "キャンセル"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-gray-100 text-gray-800"
                           }`}
                         >
                           {action}
@@ -225,10 +223,12 @@ export default function AdminPage() {
                 <h3 className="text-lg font-medium text-gray-700 mb-2">注文情報</h3>
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <p className="mb-1">
-                    <span className="font-medium">注文ID:</span> {selectedConversation.order_id || "-"}
+                    <span className="font-medium">注文ID:</span>{" "}
+                    {selectedConversation.order_id || "-"}
                   </p>
                   <p className="mb-1">
-                    <span className="font-medium">ユーザーID:</span> {selectedConversation.user_id || "-"}
+                    <span className="font-medium">ユーザーID:</span>{" "}
+                    {selectedConversation.user_id || "-"}
                   </p>
                 </div>
               </div>
@@ -240,9 +240,7 @@ export default function AdminPage() {
                 {selectedConversation.conversation_history.map((message, index) => (
                   <div
                     key={index}
-                    className={`mb-4 ${
-                      message.role === "user" ? "text-right" : "text-left"
-                    }`}
+                    className={`mb-4 ${message.role === "user" ? "text-right" : "text-left"}`}
                   >
                     <div
                       className={`inline-block max-w-md rounded-lg px-4 py-2 ${
@@ -271,14 +269,12 @@ export default function AdminPage() {
                         {func.function === "check_order_details"
                           ? "注文詳細確認"
                           : func.function === "cancel_order"
-                          ? "注文キャンセル"
-                          : func.function === "update_order_quantity"
-                          ? "注文変更"
-                          : func.function}
+                            ? "注文キャンセル"
+                            : func.function === "update_order_quantity"
+                              ? "注文変更"
+                              : func.function}
                       </p>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {formatDate(func.timestamp)}
-                      </p>
+                      <p className="text-sm text-gray-600 mt-1">{formatDate(func.timestamp)}</p>
                       <div className="mt-2 text-sm">
                         <pre className="bg-gray-100 p-2 rounded overflow-x-auto">
                           {JSON.stringify(func.arguments, null, 2)}
@@ -294,4 +290,4 @@ export default function AdminPage() {
       </div>
     </div>
   );
-} 
+}

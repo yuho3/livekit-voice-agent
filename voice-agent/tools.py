@@ -76,18 +76,15 @@ class AssistantFnc(llm.FunctionContext):
             # エージェントがすでに発話中の場合はスキップ
             filler_message =" ユーザーID{user_id},  注文ID{order_id}の注文のステータスを確認中です"
             message = filler_message.format(user_id=user_id, order_id=order_id)
-            logger.info(f"フィラーメッセージを発話: {message}")
 
             # NOTE: add_to_chat_ctx=True は、Function Callingのチャットコンテキストの末尾にメッセージを追加する
             speech_handle = await agent.say(message, add_to_chat_ctx=True)  # noqa: F841
-
-        logger.info(f"注文ステータスを確認: {user_id}, {order_id}")
         
         # 注文が存在するか確認
         order_key = f"{user_id}_{order_id}"
         if order_key not in self.orders:
             # 注文が存在しない場合は新しく作成
-            order_status = random.choice(["準備中"])
+            order_status = random.choice(["準備中", "配送中"])
             order_items = self.generate_random_order_items()
             total_price = sum(item["price"] * item["quantity"] for item in order_items)
             
@@ -131,12 +128,9 @@ class AssistantFnc(llm.FunctionContext):
             # フィラーメッセージを発話
             filler_message = "ユーザーID{user_id}の注文ID{order_id}のキャンセル処理を実行中です"
             message = filler_message.format(user_id=user_id, order_id=order_id)
-            logger.info(f"フィラーメッセージを発話: {message}")
             
             # チャットコンテキストに追加
             speech_handle = await agent.say(message, add_to_chat_ctx=True)  # noqa: F841
-        
-        logger.info(f"注文キャンセルを実行: {user_id}, {order_id}")
         
         # 注文が存在するか確認
         order_key = f"{user_id}_{order_id}"
@@ -213,12 +207,9 @@ class AssistantFnc(llm.FunctionContext):
             # フィラーメッセージを発話
             filler_message = "ユーザーID{user_id}の注文ID{order_id}の商品「{product_name}」の数量を{new_quantity}個に変更しています"
             message = filler_message.format(user_id=user_id, order_id=order_id, product_name=product_name, new_quantity=new_quantity)
-            logger.info(f"フィラーメッセージを発話: {message}")
             
             # チャットコンテキストに追加
             speech_handle = await agent.say(message, add_to_chat_ctx=True)  # noqa: F841
-        
-        logger.info(f"注文内容変更を実行: {user_id}, {order_id}, {product_name}, {new_quantity}")
         
         # 注文が存在するか確認
         order_key = f"{user_id}_{order_id}"
@@ -318,10 +309,6 @@ class AssistantFnc(llm.FunctionContext):
         
         # 会話履歴を取得
         conversation_history = []
-        logger.info("会話履歴を準備します")
-
-        # chat_ctxオブジェクト全体をログに出力
-        logger.info(f"会話履歴: {agent.chat_ctx}")
 
         # agent.chat_ctxはイテレート可能ではなく、messagesプロパティを使用する必要がある
         for message in agent.chat_ctx.messages:
@@ -331,10 +318,6 @@ class AssistantFnc(llm.FunctionContext):
                     "role": message.role,
                     "content": message.content
                 })
-                logger.info(f"会話履歴に追加: {message.role}, 内容: {message.content[:30]}...")
-        
-        
-        logger.info(f"会話履歴の件数: {len(conversation_history)}")
         
         # 実行された関数からアクションの種類を判断
         action_types = []
@@ -366,17 +349,12 @@ class AssistantFnc(llm.FunctionContext):
                     order_id = str(func["args"]["order_id"])
                     user_id = str(func["args"]["user_id"])
         
-        logger.info(f"会話分類: {action_types}")
-        logger.info(f"抽出されたorder_id: {order_id}, user_id: {user_id}")
-        
         # アクション要約がない場合のデフォルトメッセージ
         if not action_types:
             action_types = ["不明"]
         
         # 会話ID生成または取得
         conversation_id = str(uuid.uuid4())
-        
-        logger.info(f"会話ID: {conversation_id}")
         
         # データベースに保存するデータ
         conversation_data = {
@@ -392,12 +370,9 @@ class AssistantFnc(llm.FunctionContext):
         
         if user_id is not None:
             conversation_data["user_id"] = user_id
-            
-        logger.info(f"保存するデータ（会話ID: {conversation_id}, アクション: {action_types}, order_id: {order_id}, user_id: {user_id}）")
         
         # データベースに保存
         try:
-            logger.info(f"会話データをデータベースに保存します: {conversation_id}")
             await save_conversation(conversation_data)
             logger.info(f"会話データを保存しました: {conversation_id}")
         except Exception as e:
@@ -408,9 +383,7 @@ class AssistantFnc(llm.FunctionContext):
         
         # エージェントを終了
         try:
-            logger.info("エージェントを終了します")
             agent.terminate()
-            logger.info("エージェントを正常に終了しました")
         except Exception as e:
             logger.error(f"エージェント終了中にエラーが発生しました: {str(e)}")
         
