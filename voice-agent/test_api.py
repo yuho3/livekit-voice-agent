@@ -6,10 +6,9 @@ from api import save_conversation
 async def test_save():
     conversation_data = {
         "conversation_id": str(uuid.uuid4()),
-        "timestamp": datetime.now().isoformat(),
-        "end_time": datetime.now().isoformat(),
         "action_types": ["テスト"],
-        "summary": "テスト会話データ",
+        "order_id": "12345",
+        "user_id": "67890",
         "conversation_history": [
             {"role": "assistant", "content": "こんにちは"},
             {"role": "user", "content": "テスト"}

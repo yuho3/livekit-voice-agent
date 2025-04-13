@@ -1,10 +1,39 @@
 from livekit.agents import llm
 from livekit.agents.pipeline import AgentCallContext
+from livekit.plugins import openai
+import uuid
 import logging
+import os
+from logging.handlers import RotatingFileHandler
 import random
 import datetime
 
+# api.pyからsave_conversation関数をインポート
+from api import save_conversation
+
+# ログディレクトリの設定
+log_dir = os.environ.get("LOG_DIR", "KMS/logs")
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, "voice-agent.log")
+
+# ロガーの設定
 logger = logging.getLogger("voice-agent")
+logger.setLevel(logging.INFO)  # ログレベルの設定
+
+# ファイルハンドラーの追加
+file_handler = RotatingFileHandler(log_file, maxBytes=10485760, backupCount=5)  # 10MB、最大5ファイル
+file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(file_formatter)
+logger.addHandler(file_handler)
+
+# コンソールハンドラーも残しておく（必要に応じて）
+console_handler = logging.StreamHandler()
+console_formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(console_formatter)
+logger.addHandler(console_handler)
+
+# これにより既存のロガー設定をリセットする（オプション）
+logger.propagate = False
 
 class AssistantFnc(llm.FunctionContext):
     """
@@ -58,7 +87,7 @@ class AssistantFnc(llm.FunctionContext):
         order_key = f"{user_id}_{order_id}"
         if order_key not in self.orders:
             # 注文が存在しない場合は新しく作成
-            order_status = random.choice(["準備中", "配送中"])
+            order_status = random.choice(["準備中"])
             order_items = self.generate_random_order_items()
             total_price = sum(item["price"] * item["quantity"] for item in order_items)
             
@@ -265,6 +294,127 @@ class AssistantFnc(llm.FunctionContext):
             "old_total": old_total,
             "new_total": order["total_price"]
         }
+
+    @llm.ai_callable(
+        description="会話の終わりかけに選択する関数です。サービスの提供が終わりそうなタイミングに利用します。終了前に締めの挨拶を行います。"
+    )
+    async def end_conversation(self):
+        """会話を終了し、会話データをデータベースに保存する"""
+        
+        # 実行された関数を記録
+        self.executed_functions.append({
+            "function": "end_conversation",
+            "args": {},
+            "timestamp": datetime.datetime.now().isoformat()
+        })
+        
+        # エージェントコンテキストを取得
+        agent = AgentCallContext.get_current().agent
+        
+        # 締めの挨拶
+        await agent.say("ご利用ありがとうございました。またのお電話をお待ちしております。それではさようなら。", allow_interruptions=False)
+        
+        logger.info("会話を終了します")
+        
+        # 会話履歴を取得
+        conversation_history = []
+        logger.info("会話履歴を準備します")
+
+        # chat_ctxオブジェクト全体をログに出力
+        logger.info(f"会話履歴: {agent.chat_ctx}")
+
+        # agent.chat_ctxはイテレート可能ではなく、messagesプロパティを使用する必要がある
+        for message in agent.chat_ctx.messages:
+            # システムメッセージをスキップし、ユーザーとアシスタントのメッセージのみを取得
+            if message.role in ["user", "assistant"]:
+                conversation_history.append({
+                    "role": message.role,
+                    "content": message.content
+                })
+                logger.info(f"会話履歴に追加: {message.role}, 内容: {message.content[:30]}...")
+        
+        
+        logger.info(f"会話履歴の件数: {len(conversation_history)}")
+        
+        # 実行された関数からアクションの種類を判断
+        action_types = []
+        order_id = None
+        user_id = None
+        
+        # 実行された関数から最新のorder_idとuser_idを抽出
+        for func in self.executed_functions:
+            # アクションタイプを追加
+            if func["function"] == "check_order_details":
+                if "確認" not in action_types:
+                    action_types.append("確認")
+                # order_idとuser_idを抽出
+                if "args" in func and "order_id" in func["args"] and "user_id" in func["args"]:
+                    order_id = str(func["args"]["order_id"])
+                    user_id = str(func["args"]["user_id"])
+            elif func["function"] == "cancel_order":
+                if "キャンセル" not in action_types:
+                    action_types.append("キャンセル")
+                # order_idとuser_idを抽出
+                if "args" in func and "order_id" in func["args"] and "user_id" in func["args"]:
+                    order_id = str(func["args"]["order_id"])
+                    user_id = str(func["args"]["user_id"])
+            elif func["function"] == "update_order_quantity":
+                if "変更" not in action_types:
+                    action_types.append("変更")
+                # order_idとuser_idを抽出
+                if "args" in func and "order_id" in func["args"] and "user_id" in func["args"]:
+                    order_id = str(func["args"]["order_id"])
+                    user_id = str(func["args"]["user_id"])
+        
+        logger.info(f"会話分類: {action_types}")
+        logger.info(f"抽出されたorder_id: {order_id}, user_id: {user_id}")
+        
+        # アクション要約がない場合のデフォルトメッセージ
+        if not action_types:
+            action_types = ["不明"]
+        
+        # 会話ID生成または取得
+        conversation_id = str(uuid.uuid4())
+        
+        logger.info(f"会話ID: {conversation_id}")
+        
+        # データベースに保存するデータ
+        conversation_data = {
+            "conversation_id": conversation_id,
+            "action_types": action_types,
+            "conversation_history": conversation_history,
+            "executed_functions": self.executed_functions
+        }
+        
+        # order_idとuser_idがNoneでない場合のみ追加
+        if order_id is not None:
+            conversation_data["order_id"] = order_id
+        
+        if user_id is not None:
+            conversation_data["user_id"] = user_id
+            
+        logger.info(f"保存するデータ（会話ID: {conversation_id}, アクション: {action_types}, order_id: {order_id}, user_id: {user_id}）")
+        
+        # データベースに保存
+        try:
+            logger.info(f"会話データをデータベースに保存します: {conversation_id}")
+            await save_conversation(conversation_data)
+            logger.info(f"会話データを保存しました: {conversation_id}")
+        except Exception as e:
+            logger.error(f"会話データの保存に失敗しました: {str(e)}")
+            # スタックトレースも出力
+            import traceback
+            logger.error(traceback.format_exc())
+        
+        # エージェントを終了
+        try:
+            logger.info("エージェントを終了します")
+            agent.terminate()
+            logger.info("エージェントを正常に終了しました")
+        except Exception as e:
+            logger.error(f"エージェント終了中にエラーが発生しました: {str(e)}")
+        
+        return {"status": "success", "message": "会話を終了しました"}
 
     def generate_random_order_items(self, min_items=1, max_items=3):
         """

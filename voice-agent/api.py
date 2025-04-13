@@ -28,11 +28,11 @@ class Conversation(Base):
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     timestamp = Column(DateTime, default=datetime.now)
-    end_time = Column(DateTime, nullable=True)
-    summary = Column(Text, nullable=True)
+    order_id = Column(String, nullable=True)
+    user_id = Column(String, nullable=True)
     history = relationship("Message", back_populates="conversation", cascade="all, delete-orphan")
     executed_functions = relationship("ExecutedFunction", back_populates="conversation", cascade="all, delete-orphan")
-    
+
 class ActionType(Base):
     __tablename__ = "action_types"
     
@@ -87,9 +87,9 @@ def get_conversations():
         result.append({
             "id": conv.id,
             "timestamp": conv.timestamp.isoformat(),
-            "end_time": conv.end_time.isoformat() if conv.end_time else None,
             "action_types": action_type_list,
-            "summary": conv.summary
+            "order_id": conv.order_id,
+            "user_id": conv.user_id
         })
     
     return jsonify(result)
@@ -124,9 +124,9 @@ def get_conversation_detail(conversation_id: str):
     result = {
         "id": conversation.id,
         "timestamp": conversation.timestamp.isoformat(),
-        "end_time": conversation.end_time.isoformat() if conversation.end_time else None,
         "action_types": action_type_list,
-        "summary": conversation.summary,
+        "order_id": conversation.order_id,
+        "user_id": conversation.user_id,
         "conversation_history": message_list,
         "executed_functions": function_list
     }
@@ -145,9 +145,9 @@ def _save_conversation_sync(data: Dict[str, Any]):
         # 会話の作成
         conv = Conversation(
             id=data["conversation_id"],
-            timestamp=datetime.fromisoformat(data["timestamp"]),
-            end_time=datetime.fromisoformat(data["end_time"]) if data["end_time"] else None,
-            summary=data["summary"]
+            timestamp=datetime.now(),
+            order_id=data.get("order_id"),
+            user_id=data.get("user_id")
         )
         db.add(conv)
         

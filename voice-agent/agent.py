@@ -1,5 +1,7 @@
 import logging
+import os
 import uuid
+from logging.handlers import RotatingFileHandler
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -25,7 +27,30 @@ from tools import AssistantFnc
 
 
 load_dotenv(dotenv_path=".env.local")
+
+# ログディレクトリの設定
+log_dir = os.environ.get("LOG_DIR", "KMS/logs")
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, "voice-agent.log")
+
+# ロガーの設定
 logger = logging.getLogger("voice-agent")
+logger.setLevel(logging.INFO)  # ログレベルの設定
+
+# ファイルハンドラーの追加
+file_handler = RotatingFileHandler(log_file, maxBytes=10485760, backupCount=5)  # 10MB、最大5ファイル
+file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(file_formatter)
+logger.addHandler(file_handler)
+
+# コンソールハンドラーも残しておく（必要に応じて）
+console_handler = logging.StreamHandler()
+console_formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(console_formatter)
+logger.addHandler(console_handler)
+
+# これにより既存のロガー設定をリセットする（オプション）
+logger.propagate = False
 
 
 def prewarm(proc: JobProcess):
@@ -36,10 +61,15 @@ async def entrypoint(ctx: JobContext):
     initial_ctx = llm.ChatContext().append(
         role="system",
         text=(
-            "あなたはLiveKit によって作成された音声エージェントです。ユーザーとのインターフェースは音声になります。文字起こしされた音声があなたに届けられるため、誤字脱字が発生している可能性があります。必要に応じて文意を推測しながら答えてください。"
-            "あなたは、短い簡潔な応答を使用し、発音できない句読点の使用は避けるべきです。"
-            "あなたは注文確認のコールセンターのエージェントです。注文の確認・変更・キャンセルを司ります。それ以外のことはできません"
-            "特に、注文番号・ユーザー番号はともに5桁の数字になります。それぞれのfunctionを使用する前に、ユーザーから聞いた数字があっているかは必ず確認してください。聞こえたものが5桁でなかった場合は、聞き取れなかった旨を謝罪しつつ、もう一度ゆっくり発話してもらうことを促しながら聞いてください"
+            "あなたはLiveKit によって作成された音声エージェントです。ユーザーとのインターフェースは音声になります。文字起こしされた音声があなたに届けられるため、誤字脱字が発生している可能性があります。特に漢字を間違えます。必要に応じて文意を推測しながら答えてください。\n"
+            "あなたは、短い簡潔な応答を使用し、発音できない句読点の使用は避けるべきです。\n"
+            "あなたは注文確認のコールセンターのエージェントです。注文の確認・変更・キャンセルを司ります。それ以外のことはできません。\n"
+            "確認: 注文内容の確認、配送状況と注文商品が確認できるので、必ずユーザーにどちらもお伝えします、"
+            "変更: 注文内容の変更、注文商品の数量変更を承ります。ただし、すでに配送・発送が完了している注文は変更できません。"
+            "キャンセル: 注文内容のキャンセルを承ります。ただし、すでに配送・発送が完了している注文はキャンセルできません。"
+            "特に、注文番号(order_id)とユーザー番号(user_id)はともに5桁の数字になります。これらの番号は会話の中で非常に重要な要素です。\n"
+            "初めてfunctionを使用する前に、ユーザーから聞いた数字があっているかは必ず確認してください。聞こえたものが5桁でなかった場合は、聞き取れなかった旨を謝罪しつつ、もう一度ゆっくり発話してもらうことを促しながら聞いてください。一度確認が取れたら、以後基本的にそのユーザーIDと注文IDを使い回してください。\n"
+            "会話の中で注文番号とユーザー番号が特定できたらそれをしっかり記録してください。"
         ),
     )
 
@@ -50,10 +80,6 @@ async def entrypoint(ctx: JobContext):
     participant = await ctx.wait_for_participant()
     logger.info(f"starting voice assistant for participant {participant.identity}")
 
-    # 会話IDの生成
-    conversation_id = str(uuid.uuid4())
-    logger.info(f"新しい会話ID: {conversation_id}")
-
     # AssistantFncのインスタンスを作成
     fnc_ctx = AssistantFnc()
 
@@ -63,11 +89,14 @@ async def entrypoint(ctx: JobContext):
     # https://docs.livekit.io/agents/plugins
     agent = VoicePipelineAgent(
         vad=ctx.proc.userdata["vad"],
-        stt=openai.STT(model="gpt-4o-transcribe", language="ja"),
-        llm=openai.LLM(model="gpt-4o-mini"),
+        stt=openai.STT(model="gpt-4o-transcribe", 
+                       language="ja",
+                       prompt = "あなたは注文確認のコールセンターのエージェントです。注文の確認・変更・キャンセルを司ります。注文番号(order_id)とユーザー番号(user_id)はともに5桁の数字になります。それらの数字は半角で書き出してください"
+                       ),
+        llm=openai.LLM(model="gpt-4o"),
         tts=openai.TTS(
             model="gpt-4o-mini-tts",
-            instructions="あなたは注文確認のコールセンターのエージェントです。注文の確認・変更・キャンセルを司ります。注文番号・ユーザー番号はともに5桁の数字になります。それらの数字は一文字ずつ読み上げてください。例：01135 -> ぜろ いち いち さん ご 注文番号は、必ず5桁全てを読み上げてください",
+            instructions="あなたは注文確認のコールセンターのエージェントです。注文の確認・変更・キャンセルを司ります。注文番号(order_id)とユーザー番号(user_id)はともに5桁の数字になります。それらの数字は一文字ずつ読み上げてください。例：01135 -> ぜろ いち いち さん ご。注文番号とユーザー番号は、必ず5桁全てを読み上げてください。これらの番号は会話において非常に重要なため、特に明瞭に発音してください。",
             ),
         # use LiveKit's transformer-based turn detector
         turn_detector=turn_detector.EOUModel(),
@@ -89,72 +118,10 @@ async def entrypoint(ctx: JobContext):
         metrics.log_metrics(agent_metrics)
         usage_collector.collect(agent_metrics)
 
-    # 会話終了時に実行される処理
-    @agent.on("conversation_ended")
-    async def on_conversation_ended():
-        logger.info("会話が終了しました")
-        
-        # 会話履歴を取得
-        conversation_history = []
-        for message in agent.chat_ctx.messages:
-            if message.role in ["user", "assistant"]:
-                conversation_history.append({
-                    "role": message.role,
-                    "content": message.text
-                })
-        
-        # 実行された関数からアクションの種類を判断
-        action_types = []
-        for func in fnc_ctx.executed_functions:
-            if func["function"] == "check_order_details":
-                if "確認" not in action_types:
-                    action_types.append("確認")
-            elif func["function"] == "cancel_order":
-                if "キャンセル" not in action_types:
-                    action_types.append("キャンセル")
-            elif func["function"] == "update_order_quantity":
-                if "変更" not in action_types:
-                    action_types.append("変更")
-        
-        # 要約生成用のプロンプト
-        summary_prompt = llm.ChatContext().append(
-            role="system",
-            text="あなたは会話の内容を簡潔に要約するアシスタントです。以下の会話履歴から、何が行われたかを50文字以内で要約してください。"
-        )
-        
-        # 会話履歴を追加
-        for msg in conversation_history:
-            summary_prompt.append(role=msg["role"], text=msg["content"])
-        
-        # 要約を生成するためのLLMリクエスト
-        summary_response = await agent.llm.chat_completion(summary_prompt)
-        summary = summary_response.message.text
-        
-        # アクション要約がない場合のデフォルトメッセージ
-        if not action_types:
-            action_types = ["不明"]
-        
-        # データベースに保存するデータ
-        conversation_data = {
-            "conversation_id": conversation_id,
-            "timestamp": agent.start_time.isoformat(),
-            "end_time": agent.end_time.isoformat() if agent.end_time else None,
-            "action_types": action_types,
-            "summary": summary,
-            "conversation_history": conversation_history,
-            "executed_functions": fnc_ctx.executed_functions
-        }
-        
-        # ここでAPI経由でデータベースに保存
-        from api import save_conversation
-        await save_conversation(conversation_data)
-        
-        logger.info(f"会話データを保存しました: {conversation_id}")
-
     agent.start(ctx.room, participant)
 
     # The agent should be polite and greet the user when it joins :)
-    await agent.say("こんにちは, こちらは楽々ECのコールセンターです。どんなご用件ですか？", allow_interruptions=True)
+    await agent.say("こんにちは, こちらは楽々ECのコールセンターです。どんなご用件ですか？", allow_interruptions=True, add_to_chat_ctx=True)
 
 
 if __name__ == "__main__":
