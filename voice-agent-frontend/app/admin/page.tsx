@@ -11,9 +11,9 @@ import { FiArrowLeft } from "react-icons/fi";
 interface Conversation {
   id: string;
   timestamp: string;
-  end_time: string | null;
   action_types: string[];
-  summary: string;
+  order_id: string | null;
+  user_id: string | null;
 }
 
 interface ConversationDetail extends Conversation {
@@ -122,7 +122,10 @@ export default function AdminPage() {
                     問い合わせ分類
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    概要
+                    注文ID
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    ユーザーID
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     操作
@@ -156,7 +159,10 @@ export default function AdminPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-900">
-                      <div className="line-clamp-2">{conversation.summary}</div>
+                      {conversation.order_id || "-"}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900">
+                      {conversation.user_id || "-"}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <button
@@ -189,11 +195,7 @@ export default function AdminPage() {
                 <h3 className="text-lg font-medium text-gray-700 mb-2">基本情報</h3>
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <p className="mb-1">
-                    <span className="font-medium">開始時間:</span> {formatDate(selectedConversation.timestamp)}
-                  </p>
-                  <p className="mb-1">
-                    <span className="font-medium">終了時間:</span>{" "}
-                    {selectedConversation.end_time ? formatDate(selectedConversation.end_time) : "-"}
+                    <span className="font-medium">記録時間:</span> {formatDate(selectedConversation.timestamp)}
                   </p>
                   <p>
                     <span className="font-medium">問い合わせ分類:</span>{" "}
@@ -220,9 +222,14 @@ export default function AdminPage() {
               </div>
 
               <div>
-                <h3 className="text-lg font-medium text-gray-700 mb-2">要約</h3>
+                <h3 className="text-lg font-medium text-gray-700 mb-2">注文情報</h3>
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <p>{selectedConversation.summary}</p>
+                  <p className="mb-1">
+                    <span className="font-medium">注文ID:</span> {selectedConversation.order_id || "-"}
+                  </p>
+                  <p className="mb-1">
+                    <span className="font-medium">ユーザーID:</span> {selectedConversation.user_id || "-"}
+                  </p>
                 </div>
               </div>
             </div>
