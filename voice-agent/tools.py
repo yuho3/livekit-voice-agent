@@ -1,10 +1,39 @@
 from livekit.agents import llm
 from livekit.agents.pipeline import AgentCallContext
+from livekit.plugins import openai
+import uuid
 import logging
+import os
+from logging.handlers import RotatingFileHandler
 import random
 import datetime
 
+# api.pyからsave_conversation関数をインポート
+from api import save_conversation
+
+# ログディレクトリの設定
+log_dir = os.environ.get("LOG_DIR", "KMS/logs")
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, "voice-agent.log")
+
+# ロガーの設定
 logger = logging.getLogger("voice-agent")
+logger.setLevel(logging.INFO)  # ログレベルの設定
+
+# ファイルハンドラーの追加
+file_handler = RotatingFileHandler(log_file, maxBytes=10485760, backupCount=5)  # 10MB、最大5ファイル
+file_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(file_formatter)
+logger.addHandler(file_handler)
+
+# コンソールハンドラーも残しておく（必要に応じて）
+console_handler = logging.StreamHandler()
+console_formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(console_formatter)
+logger.addHandler(console_handler)
+
+# これにより既存のロガー設定をリセットする（オプション）
+logger.propagate = False
 
 class AssistantFnc(llm.FunctionContext):
     """
@@ -15,6 +44,8 @@ class AssistantFnc(llm.FunctionContext):
         super().__init__()
         # 注文データを保持するディクショナリ
         self.orders = {}
+        # 実行された関数を追跡するためのリスト
+        self.executed_functions = []
         
     @llm.ai_callable(
         description="user_idとorder_idを引数に取り、注文のステータスを返します。user_idはともに5桁の数字です。",
@@ -25,6 +56,13 @@ class AssistantFnc(llm.FunctionContext):
         order_id: int
     ):
         """注文のステータスを確認する"""
+
+        # 実行された関数を記録
+        self.executed_functions.append({
+            "function": "check_order_details",
+            "args": {"user_id": user_id, "order_id": order_id},
+            "timestamp": datetime.datetime.now().isoformat()
+        })
 
         # Function Calling実行中の場合、ユーザーに対して時間がかかることを通知するためのオプションがいくつかある
         # オプション1: Function Callingをトリガーした直後に.sayでフィラーメッセージを使用する
@@ -38,12 +76,9 @@ class AssistantFnc(llm.FunctionContext):
             # エージェントがすでに発話中の場合はスキップ
             filler_message =" ユーザーID{user_id},  注文ID{order_id}の注文のステータスを確認中です"
             message = filler_message.format(user_id=user_id, order_id=order_id)
-            logger.info(f"フィラーメッセージを発話: {message}")
 
             # NOTE: add_to_chat_ctx=True は、Function Callingのチャットコンテキストの末尾にメッセージを追加する
             speech_handle = await agent.say(message, add_to_chat_ctx=True)  # noqa: F841
-
-        logger.info(f"注文ステータスを確認: {user_id}, {order_id}")
         
         # 注文が存在するか確認
         order_key = f"{user_id}_{order_id}"
@@ -76,6 +111,13 @@ class AssistantFnc(llm.FunctionContext):
     ):
         """ユーザーの注文をキャンセルする"""
         
+        # 実行された関数を記録
+        self.executed_functions.append({
+            "function": "cancel_order",
+            "args": {"user_id": user_id, "order_id": order_id},
+            "timestamp": datetime.datetime.now().isoformat()
+        })
+        
         # Function Calling実行中の状態通知
         agent = AgentCallContext.get_current().agent
         
@@ -86,12 +128,9 @@ class AssistantFnc(llm.FunctionContext):
             # フィラーメッセージを発話
             filler_message = "ユーザーID{user_id}の注文ID{order_id}のキャンセル処理を実行中です"
             message = filler_message.format(user_id=user_id, order_id=order_id)
-            logger.info(f"フィラーメッセージを発話: {message}")
             
             # チャットコンテキストに追加
             speech_handle = await agent.say(message, add_to_chat_ctx=True)  # noqa: F841
-        
-        logger.info(f"注文キャンセルを実行: {user_id}, {order_id}")
         
         # 注文が存在するか確認
         order_key = f"{user_id}_{order_id}"
@@ -151,6 +190,13 @@ class AssistantFnc(llm.FunctionContext):
     ):
         """注文内容の商品数量を変更する"""
         
+        # 実行された関数を記録
+        self.executed_functions.append({
+            "function": "update_order_quantity",
+            "args": {"user_id": user_id, "order_id": order_id, "product_name": product_name, "new_quantity": new_quantity},
+            "timestamp": datetime.datetime.now().isoformat()
+        })
+        
         # Function Calling実行中の状態通知
         agent = AgentCallContext.get_current().agent
         
@@ -161,12 +207,9 @@ class AssistantFnc(llm.FunctionContext):
             # フィラーメッセージを発話
             filler_message = "ユーザーID{user_id}の注文ID{order_id}の商品「{product_name}」の数量を{new_quantity}個に変更しています"
             message = filler_message.format(user_id=user_id, order_id=order_id, product_name=product_name, new_quantity=new_quantity)
-            logger.info(f"フィラーメッセージを発話: {message}")
             
             # チャットコンテキストに追加
             speech_handle = await agent.say(message, add_to_chat_ctx=True)  # noqa: F841
-        
-        logger.info(f"注文内容変更を実行: {user_id}, {order_id}, {product_name}, {new_quantity}")
         
         # 注文が存在するか確認
         order_key = f"{user_id}_{order_id}"
@@ -242,6 +285,109 @@ class AssistantFnc(llm.FunctionContext):
             "old_total": old_total,
             "new_total": order["total_price"]
         }
+
+    @llm.ai_callable(
+        description="会話の終わりかけに選択する関数です。サービスの提供が終わりそうなタイミングに利用します。終了前に締めの挨拶を行います。"
+    )
+    async def end_conversation(self):
+        """会話を終了し、会話データをデータベースに保存する"""
+        
+        # 実行された関数を記録
+        self.executed_functions.append({
+            "function": "end_conversation",
+            "args": {},
+            "timestamp": datetime.datetime.now().isoformat()
+        })
+        
+        # エージェントコンテキストを取得
+        agent = AgentCallContext.get_current().agent
+        
+        # 締めの挨拶
+        await agent.say("ご利用ありがとうございました。またのお電話をお待ちしております。それではさようなら。", allow_interruptions=False)
+        
+        logger.info("会話を終了します")
+        
+        # 会話履歴を取得
+        conversation_history = []
+
+        # agent.chat_ctxはイテレート可能ではなく、messagesプロパティを使用する必要がある
+        for message in agent.chat_ctx.messages:
+            # システムメッセージをスキップし、ユーザーとアシスタントのメッセージのみを取得
+            if message.role in ["user", "assistant"]:
+                conversation_history.append({
+                    "role": message.role,
+                    "content": message.content
+                })
+        
+        # 実行された関数からアクションの種類を判断
+        action_types = []
+        order_id = None
+        user_id = None
+        
+        # 実行された関数から最新のorder_idとuser_idを抽出
+        for func in self.executed_functions:
+            # アクションタイプを追加
+            if func["function"] == "check_order_details":
+                if "確認" not in action_types:
+                    action_types.append("確認")
+                # order_idとuser_idを抽出
+                if "args" in func and "order_id" in func["args"] and "user_id" in func["args"]:
+                    order_id = str(func["args"]["order_id"])
+                    user_id = str(func["args"]["user_id"])
+            elif func["function"] == "cancel_order":
+                if "キャンセル" not in action_types:
+                    action_types.append("キャンセル")
+                # order_idとuser_idを抽出
+                if "args" in func and "order_id" in func["args"] and "user_id" in func["args"]:
+                    order_id = str(func["args"]["order_id"])
+                    user_id = str(func["args"]["user_id"])
+            elif func["function"] == "update_order_quantity":
+                if "変更" not in action_types:
+                    action_types.append("変更")
+                # order_idとuser_idを抽出
+                if "args" in func and "order_id" in func["args"] and "user_id" in func["args"]:
+                    order_id = str(func["args"]["order_id"])
+                    user_id = str(func["args"]["user_id"])
+        
+        # アクション要約がない場合のデフォルトメッセージ
+        if not action_types:
+            action_types = ["不明"]
+        
+        # 会話ID生成または取得
+        conversation_id = str(uuid.uuid4())
+        
+        # データベースに保存するデータ
+        conversation_data = {
+            "conversation_id": conversation_id,
+            "action_types": action_types,
+            "conversation_history": conversation_history,
+            "executed_functions": self.executed_functions
+        }
+        
+        # order_idとuser_idがNoneでない場合のみ追加
+        if order_id is not None:
+            conversation_data["order_id"] = order_id
+        
+        if user_id is not None:
+            conversation_data["user_id"] = user_id
+        
+        # データベースに保存
+        try:
+            await save_conversation(conversation_data)
+            logger.info(f"会話データを保存しました: {conversation_id}")
+        except Exception as e:
+            logger.error(f"会話データの保存に失敗しました: {str(e)}")
+            # スタックトレースも出力
+            import traceback
+            logger.error(traceback.format_exc())
+        
+        # エージェントを終了
+        try:
+            agent.terminate()
+        except Exception as e:
+            logger.error(f"エージェント終了中にエラーが発生しました: {str(e)}")
+        
+        return {"status": "success", "message": "会話を終了しました"}
 
     def generate_random_order_items(self, min_items=1, max_items=3):
         """

@@ -14,6 +14,7 @@ import {
 import { useKrispNoiseFilter } from "@livekit/components-react/krisp";
 import { AnimatePresence, motion } from "framer-motion";
 import { Room, RoomEvent } from "livekit-client";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { ConnectionDetails } from "./api/connection-details/route";
 
@@ -56,6 +57,16 @@ export default function Page() {
           <SimpleVoiceAssistant onConnectButtonClicked={onConnectButtonClicked} />
         </div>
       </RoomContext.Provider>
+
+      {/* 管理画面へのリンク */}
+      <div className="fixed top-4 right-4">
+        <Link
+          href="/admin"
+          className="bg-white text-gray-800 px-4 py-2 rounded shadow hover:bg-gray-100"
+        >
+          管理画面
+        </Link>
+      </div>
     </main>
   );
 }

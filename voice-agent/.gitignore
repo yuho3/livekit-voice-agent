@@ -2,3 +2,6 @@
 .venv/
 venv/
 .DS_Store
+*.log
+*.db
+__pycache__/
